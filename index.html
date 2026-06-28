@@ -41,6 +41,10 @@
   main{padding:18px 20px 60px}
   .grid{display:grid;gap:12px;
         grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+  .rowsep{grid-column:1/-1;display:flex;align-items:center;gap:12px;
+          color:var(--gold);font-weight:700;font-size:15px;margin:10px 2px 0}
+  .rowsep::after{content:"";flex:1;height:1px;
+          background:linear-gradient(90deg,var(--gold),transparent)}
   .card{background:linear-gradient(180deg,var(--panel),var(--panel2));
         border:1px solid var(--line);border-radius:14px;padding:12px;
         display:flex;flex-direction:column;gap:10px;transition:.15s}
@@ -97,8 +101,19 @@ const esc=s=>s.replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&qu
 const low=s=>(s||'').toLowerCase();
 // op.gg を開くとき「コアビルド」の位置までスクロール&ハイライト(テキストフラグメント / Chrome・Edge対応)
 const opggUrl=c=>c.opgg+'#:~:text='+encodeURIComponent('コアビルド');
-function render(list){
-  grid.innerHTML=list.map(c=>`
+// 先頭カナ→五十音の「行」ラベル(ア行/カ行…)
+const ROW={ア:'ア',イ:'ア',ウ:'ア',エ:'ア',オ:'ア',ヴ:'ア',
+  カ:'カ',キ:'カ',ク:'カ',ケ:'カ',コ:'カ',ガ:'カ',ギ:'カ',グ:'カ',ゲ:'カ',ゴ:'カ',
+  サ:'サ',シ:'サ',ス:'サ',セ:'サ',ソ:'サ',ザ:'サ',ジ:'サ',ズ:'サ',ゼ:'サ',ゾ:'サ',
+  タ:'タ',チ:'タ',ツ:'タ',テ:'タ',ト:'タ',ダ:'タ',ヂ:'タ',ヅ:'タ',デ:'タ',ド:'タ',
+  ナ:'ナ',ニ:'ナ',ヌ:'ナ',ネ:'ナ',ノ:'ナ',
+  ハ:'ハ',ヒ:'ハ',フ:'ハ',ヘ:'ハ',ホ:'ハ',バ:'ハ',ビ:'ハ',ブ:'ハ',ベ:'ハ',ボ:'ハ',パ:'ハ',ピ:'ハ',プ:'ハ',ペ:'ハ',ポ:'ハ',
+  マ:'マ',ミ:'マ',ム:'マ',メ:'マ',モ:'マ',
+  ヤ:'ヤ',ユ:'ヤ',ヨ:'ヤ',
+  ラ:'ラ',リ:'ラ',ル:'ラ',レ:'ラ',ロ:'ラ',
+  ワ:'ワ',ヲ:'ワ',ン:'ワ'};
+const rowOf=s=>ROW[(s||'')[0]]||'#';
+const cardHtml=c=>`
     <div class="card">
       <div class="head">
         <img src="${esc(c.img)}" alt="${esc(c.jp)}" loading="lazy" onerror="this.style.visibility='hidden'">
@@ -111,17 +126,28 @@ function render(list){
         <a class="opgg" href="${esc(opggUrl(c))}" target="_blank" rel="noopener">op.gg ARAM</a>
         <a class="wiki" href="${esc(c.wiki)}" target="_blank" rel="noopener">Wiki</a>
       </div>
-    </div>`).join('');
+    </div>`;
+function render(list,grouped){
+  let html='',last=null;
+  for(const c of list){
+    if(grouped){
+      const r=rowOf(c.jp);
+      if(r!==last){ html+=`<div class="rowsep">${r==='#'?'その他':r+'行'}</div>`; last=r; }
+    }
+    html+=cardHtml(c);
+  }
+  grid.innerHTML=html;
   empty.style.display=list.length?'none':'block';
   count.textContent=list.length+' / '+CHAMPS.length+' 体';
 }
 function filter(){
   const t=low(q.value).trim();
-  render(!t?CHAMPS:CHAMPS.filter(c=>low(c.jp).includes(t)||low(c.en).includes(t)||low(c.title).includes(t)));
+  if(!t) render(CHAMPS,true);                       // 通常時：行ごとの罫線あり
+  else render(CHAMPS.filter(c=>low(c.jp).includes(t)||low(c.en).includes(t)||low(c.title).includes(t)),false); // 検索時：罫線なし
 }
 q.addEventListener('input',filter);
 document.getElementById('clear').addEventListener('click',()=>{q.value='';filter();q.focus();});
-render(CHAMPS);
+render(CHAMPS,true);
 
 /* ---- 音声検索: 話しかけたチャンピオンの op.gg を開く ---- */
 const mic=document.getElementById('mic'), vstatus=document.getElementById('vstatus');
