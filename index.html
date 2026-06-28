@@ -162,14 +162,40 @@ const kata=s=>s.replace(/[ぁ-ゖ]/g,c=>String.fromCharCode(c.charCodeAt(0)+0x60
 const key=s=>kata(low(s)).replace(/[\s　ー・'’`.,&-]/g,'').replace(/[^0-9a-z゠-ヿ]/g,'');
 function matchChampion(text){
   const t=key(text); if(t.length<2) return null;
+  // 誤爆防止：完全一致 or「ほぼ名前全体」の前方一致のみ採用（名前の途中に含むだけの一致は不可）
+  const near=(a,b)=>Math.min(a.length,b.length)>=Math.max(a.length,b.length)-2; // 長さがほぼ同じ
   let best=null, score=1e9;
   for(const c of CHAMPS){
     const j=key(c.jp), e=key(c.en);
     let s=null;
-    if(j===t||e===t) s=0;                                   // 完全一致
-    else if(j&&(j.includes(t)||t.includes(j))) s=Math.abs(j.length-t.length)+1; // 日本語部分一致
-    else if(e.length>=3&&(e.includes(t)||t.includes(e))) s=Math.abs(e.length-t.length)+2; // 英語部分一致
+    if(j===t||e===t) s=0;                                                            // 完全一致
+    else if(t.length>=3 && j && (j.startsWith(t)||t.startsWith(j)) && near(j,t)) s=1; // 日本語の前方一致
+    else if(t.length>=4 && e.length>=4 && (e.startsWith(t)||t.startsWith(e)) && near(e,t)) s=2; // 英語の前方一致
     if(s!=null&&s<score){score=s;best=c;}
+  }
+  return best;
+}
+// 編集距離（レーベンシュタイン）
+function lev(a,b){
+  const m=a.length,n=b.length; if(!m)return n; if(!n)return m;
+  let prev=Array.from({length:n+1},(_, i)=>i),cur=new Array(n+1);
+  for(let i=1;i<=m;i++){ cur[0]=i;
+    for(let j=1;j<=n;j++){
+      cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    }
+    [prev,cur]=[cur,prev];
+  }
+  return prev[n];
+}
+// 一致しなくても最も音が近いチャンピオンを返す（複数候補から最良）
+function nearestChampion(texts){
+  let best=null,score=1e9;
+  for(const text of texts){
+    const t=key(text); if(!t) continue;
+    for(const c of CHAMPS){
+      const d=lev(t,key(c.jp));
+      if(d<score){score=d;best=c;}
+    }
   }
   return best;
 }
@@ -178,22 +204,34 @@ function openOpgg(c){return !!window.open(opggUrl(c),'_blank','noopener');}
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 if(!SR){ mic.style.display='none'; }
 else{
-  let rec=null, listening=false;
+  // フラグに依存せず、押すたびに前回分を破棄して新規開始（新タブで裏に回り onend が遅延しても固着しない）
+  let rec=null;
+  function stopRec(){
+    if(!rec) return;
+    rec.onresult=rec.onerror=rec.onend=null; // 遅延イベントがUIや次回を壊さないよう切り離す
+    try{ rec.abort(); }catch(_){}
+    rec=null;
+  }
   mic.addEventListener('click',()=>{
-    if(listening){ rec&&rec.stop(); return; }
-    rec=new SR(); rec.lang='ja-JP'; rec.interimResults=false; rec.maxAlternatives=6;
-    listening=true; mic.classList.add('on'); setV('🎙️ 聞き取り中… チャンピオン名を話してください');
-    rec.onresult=e=>{
-      const alts=[...e.results[0]].map(r=>r.transcript);
+    stopRec();
+    const r=new SR(); rec=r;
+    r.lang='ja-JP'; r.interimResults=false; r.maxAlternatives=6;
+    mic.classList.add('on'); setV('🎙️ 聞き取り中… チャンピオン名を話してください');
+    r.onresult=e=>{
+      const alts=[...e.results[0]].map(x=>x.transcript);
       let champ=null; for(const a of alts){ champ=matchChampion(a); if(champ) break; }
       if(champ){
         if(openOpgg(champ)){ q.value=''; filter(); setV('→ <b>'+champ.jp+'</b> を別タブで開きました（検索はクリア）'); } // 元ページは残し検索BOXを消す
-        else { q.value=champ.jp; filter(); setV('<b>'+champ.jp+'</b>：ポップアップがブロックされました。下の「ビルド/オーグメント」から開いてください'); }
-      } else { q.value=alts[0]; filter(); setV('「'+alts[0]+'」に一致するチャンピオンが見つかりませんでした'); }
+        else { q.value=champ.jp; filter(); setV('<b>'+champ.jp+'</b>：ポップアップがブロックされました。アドレスバー右の通知から「このサイトのポップアップを常に許可」に設定すると、次回から新タブで開きます'); }
+      } else { // 一致なし：最も近いキャラの先頭1文字だけを検索BOXに入れて候補を絞る
+        const near=nearestChampion(alts);
+        q.value=near?near.jp.slice(0,1):''; filter();
+        setV(near?('一致なし。近い「<b>'+near.jp+'</b>」の先頭1文字で絞り込みました'):('「'+alts[0]+'」に一致するチャンピオンが見つかりませんでした'));
+      }
     };
-    rec.onerror=e=>setV('音声認識エラー: '+e.error+(e.error==='not-allowed'?'（マイクの使用を許可してください）':''));
-    rec.onend=()=>{ listening=false; mic.classList.remove('on'); };
-    rec.start();
+    r.onerror=e=>{ mic.classList.remove('on'); setV('音声認識エラー: '+e.error+(e.error==='not-allowed'?'（マイクの使用を許可してください）':'')); };
+    r.onend=()=>{ mic.classList.remove('on'); if(rec===r) rec=null; };
+    try{ r.start(); }catch(_){ mic.classList.remove('on'); rec=null; setV('開始できませんでした。もう一度マイクを押してください'); }
   });
 }
 </script>
