@@ -8,7 +8,7 @@
   :root{
     --bg:#0a0e16; --panel:#141b27; --panel2:#1b2433; --line:#243144;
     --text:#e6edf6; --muted:#8aa0bd; --gold:#c8aa6e; --gold2:#f0e6d2;
-    --opgg:#5383e8; --wiki:#3aa66b;
+    --opgg:#5383e8; --wiki:#3aa66b; --mayhem:#a855f7;
   }
   *{box-sizing:border-box}
   body{margin:0;background:linear-gradient(180deg,#070a11,#0a0e16);
@@ -40,7 +40,7 @@
   .vstatus b{color:var(--gold2)}
   main{padding:18px 20px 60px}
   .grid{display:grid;gap:12px;
-        grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+        grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
   .rowsep{grid-column:1/-1;display:flex;align-items:center;gap:12px;
           color:var(--gold);font-weight:700;font-size:15px;margin:10px 2px 0}
   .rowsep::after{content:"";flex:1;height:1px;
@@ -55,12 +55,14 @@
   .jp{font-size:16px;font-weight:700;color:var(--gold2);line-height:1.2;
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .en{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .links{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .links{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
   .links a{display:flex;align-items:center;justify-content:center;text-decoration:none;
-           font-size:13px;font-weight:600;padding:9px 6px;border-radius:9px;
-           border:1px solid transparent;transition:.12s}
+           font-size:12px;font-weight:600;padding:9px 2px;border-radius:9px;
+           white-space:nowrap;border:1px solid transparent;transition:.12s}
   .opgg{background:rgba(83,131,232,.14);color:#9bbcff;border-color:rgba(83,131,232,.4)}
   .opgg:hover{background:var(--opgg);color:#fff}
+  .mayhem{background:rgba(168,85,247,.14);color:#d4a8ff;border-color:rgba(168,85,247,.4)}
+  .mayhem:hover{background:var(--mayhem);color:#fff}
   .wiki{background:rgba(58,166,107,.14);color:#7fe0ab;border-color:rgba(58,166,107,.4)}
   .wiki:hover{background:var(--wiki);color:#fff}
   .empty{color:var(--muted);text-align:center;padding:40px;font-size:15px}
@@ -101,6 +103,8 @@ const esc=s=>s.replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&qu
 const low=s=>(s||'').toLowerCase();
 // op.gg を開くとき「コアビルド」の位置までスクロール&ハイライト(テキストフラグメント / Chrome・Edge対応)
 const opggUrl=c=>c.opgg+'#:~:text='+encodeURIComponent('コアビルド');
+// メイヘム(ARAM: Mayhem)ビルドページ。通常ARAMと同じキーで /aram/ → /aram-mayhem/
+const mayhemUrl=c=>c.opgg.replace('/modes/aram/','/modes/aram-mayhem/');
 // 先頭カナ→五十音の「行」ラベル(ア行/カ行…)
 const ROW={ア:'ア',イ:'ア',ウ:'ア',エ:'ア',オ:'ア',ヴ:'ア',
   カ:'カ',キ:'カ',ク:'カ',ケ:'カ',コ:'カ',ガ:'カ',ギ:'カ',グ:'カ',ゲ:'カ',ゴ:'カ',
@@ -123,7 +127,8 @@ const cardHtml=c=>`
         </div>
       </div>
       <div class="links">
-        <a class="opgg" href="${esc(opggUrl(c))}" target="_blank" rel="noopener">op.gg ARAM</a>
+        <a class="opgg" href="${esc(opggUrl(c))}" target="_blank" rel="noopener" title="op.gg 通常ARAM ビルド（コアビルドへ）">ビルド</a>
+        <a class="mayhem" href="${esc(mayhemUrl(c))}" target="_blank" rel="noopener" title="op.gg メイヘム（ARAM: Mayhem）オーグメント・ビルド">オーグメント</a>
         <a class="wiki" href="${esc(c.wiki)}" target="_blank" rel="noopener">Wiki</a>
       </div>
     </div>`;
@@ -168,7 +173,8 @@ function matchChampion(text){
   }
   return best;
 }
-function openOpgg(c){const u=opggUrl(c); const w=window.open(u,'_blank','noopener'); if(!w) location.href=u;}
+// 別タブで開く（元ページは残す）。開けたら true、ポップアップ拒否なら false
+function openOpgg(c){return !!window.open(opggUrl(c),'_blank','noopener');}
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 if(!SR){ mic.style.display='none'; }
 else{
@@ -179,10 +185,11 @@ else{
     listening=true; mic.classList.add('on'); setV('🎙️ 聞き取り中… チャンピオン名を話してください');
     rec.onresult=e=>{
       const alts=[...e.results[0]].map(r=>r.transcript);
-      q.value=alts[0]; filter();
       let champ=null; for(const a of alts){ champ=matchChampion(a); if(champ) break; }
-      if(champ){ setV('→ <b>'+champ.jp+'</b> の op.gg ARAM ページを開きます'); openOpgg(champ); }
-      else setV('「'+alts[0]+'」に一致するチャンピオンが見つかりませんでした');
+      if(champ){
+        if(openOpgg(champ)){ q.value=''; filter(); setV('→ <b>'+champ.jp+'</b> を別タブで開きました（検索はクリア）'); } // 元ページは残し検索BOXを消す
+        else { q.value=champ.jp; filter(); setV('<b>'+champ.jp+'</b>：ポップアップがブロックされました。下の「ビルド/オーグメント」から開いてください'); }
+      } else { q.value=alts[0]; filter(); setV('「'+alts[0]+'」に一致するチャンピオンが見つかりませんでした'); }
     };
     rec.onerror=e=>setV('音声認識エラー: '+e.error+(e.error==='not-allowed'?'（マイクの使用を許可してください）':''));
     rec.onend=()=>{ listening=false; mic.classList.remove('on'); };
