@@ -50,6 +50,9 @@
   .side-index a{display:block;padding:3px 5px;color:var(--muted);font-size:11px;line-height:1.25;
                 text-decoration:none;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .side-index a:hover{background:var(--panel2);color:var(--gold2)}
+  .side-index b.side-row{display:block;margin:6px 0 2px;padding:2px 4px;
+                 color:var(--gold);font-size:11px;font-weight:700;border-top:1px solid var(--line)}
+  .side-index b.side-row:first-child{border-top:none;margin-top:0}
   .content{min-width:0;flex:1}
   .grid{display:grid;gap:12px;
         grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
@@ -180,7 +183,16 @@ function render(list,grouped){
     html+=cardHtml(c);
   }
   grid.innerHTML=html;
-  sideindex.innerHTML=list.map(c=>`<a href="#${champId(c)}" title="${esc(c.jp)}">${esc(c.jp)}</a>`).join('');
+  // サイドインデックスも行ごとに区切ってid付与し、上部のア～ワナビと同期スクロールできるようにする
+  let sLast=null;
+  sideindex.innerHTML=list.map(c=>{
+    let prefix='';
+    if(grouped){
+      const r=rowOf(c.jp);
+      if(r!==sLast){ prefix=`<b class="side-row" id="siderow-${r}">${r==='#'?'他':r}</b>`; sLast=r; }
+    }
+    return prefix+`<a href="#${champId(c)}" title="${esc(c.jp)}">${esc(c.jp)}</a>`;
+  }).join('');
   empty.style.display=list.length?'none':'block';
   count.textContent=list.length+' / '+CHAMPS.length+' 体';
 }
@@ -191,6 +203,13 @@ function filter(){
 }
 q.addEventListener('input',filter);
 document.getElementById('clear').addEventListener('click',()=>{q.value='';filter();q.focus();});
+// 上部の「ア～ワ」リンクを押した時、左側の索引も同じ行の位置までスクロールさせる
+document.querySelector('.row-nav').addEventListener('click',e=>{
+  const a=e.target.closest('a[href^="#row-"]'); if(!a) return;
+  const r=a.getAttribute('href').slice(5); // '#row-ア' -> 'ア'
+  const target=document.getElementById('siderow-'+r);
+  if(target) target.scrollIntoView({behavior:'smooth',block:'start'});
+});
 render(CHAMPS,true);
 
 /* ---- 音声検索: 話しかけたチャンピオンの op.gg を開く ---- */
